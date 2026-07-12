@@ -26,6 +26,11 @@ on:
         required: false
         type: string
         default: '/shared|/mocks|/models|/dto|/container'
+      build_path:
+        description: 'Caminho onde está o package main (ex: . ou ./cmd/api)'
+        required: false
+        type: string
+        default: '.'
       
       # ==========================================
       # INPUTS DA TAG (Repassados ao componente global)
@@ -68,6 +73,19 @@ jobs:
       - name: Baixar dependências
         run: go mod download
 
+      - name: Garantir que go.mod está limpo
+        run: |
+          go mod tidy
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "Erro: O go.mod ou go.sum não estão sincronizados. Rode 'go mod tidy' localmente e commite."
+            exit 1
+          fi
+
+      - name: Varredura de Segurança (govulncheck)
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-input: ${{ inputs.go_version }} 
+        
       - name: Verificar formatação
         run: |
           if [ -n "$(gofmt -l .)" ]; then
@@ -109,7 +127,7 @@ jobs:
           }'
 
       - name: Build da aplicação
-        run: go build -o ${{ inputs.binary_name }} .
+        run: go build -o ${{ inputs.binary_name }} ${{ inputs.build_path }}
 
   # ==========================================
   # JOB 2: Criação da Tag (Roda APENAS no merge/fechamento do PR)
