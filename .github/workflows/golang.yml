@@ -1,0 +1,125 @@
+name: GoLang CI
+
+on:
+  workflow_call:
+    inputs:
+      # ==========================================
+      # INPUTS DO GO
+      # ==========================================
+      go_version:
+        description: 'Versão do Go'
+        required: false
+        type: string
+        default: '1.25'
+      min_coverage:
+        description: 'Porcentagem mínima de coverage exigida'
+        required: false
+        type: string
+        default: '50'
+      binary_name:
+        description: 'Nome do arquivo binário a ser gerado no build'
+        required: false
+        type: string
+        default: 'app'
+      exclude_packages:
+        description: 'Pacotes a ignorar nos testes (separados por pipe |). Ex: /mocks|/dto'
+        required: false
+        type: string
+        default: '/shared|/mocks|/models|/dto|/container'
+      
+      # ==========================================
+      # INPUTS DA TAG (Repassados ao componente global)
+      # ==========================================
+      target_branch:
+        description: 'Branch base do PR (Destino)'
+        required: false
+        type: string
+        default: 'master'
+      source_branch:
+        description: 'Branch de origem do PR'
+        required: false
+        type: string
+        default: 'qa'
+
+# Permissão global necessária para que o job de release consiga criar a tag
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================
+  # JOB 1: Testes e Build (Pula se for fechamento de PR)
+  # ==========================================
+  backend-ci:
+    name: Backend CI
+    # Impede que os testes rodem à toa quando um PR é apenas fechado/mergeado
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Setup do Go com Cache
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go_version }}
+          cache: true
+
+      - name: Baixar dependências
+        run: go mod download
+
+      - name: Verificar formatação
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Código não formatado corretamente"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Rodar testes com coverage
+        run: |
+          # Usa o grep -E (extended) para lidar com a string dinâmica separada por pipes
+          PACKAGES=$(go list ./... | grep -vE '${{ inputs.exclude_packages }}' || true)
+          
+          if [ -z "$PACKAGES" ]; then
+            echo "Nenhum pacote para testar."
+          else
+            # Adicionei a flag -race para pegar condições de corrida
+            go test $PACKAGES -v -race -coverprofile=coverage.out
+          fi
+
+      - name: Validar coverage mínimo
+        run: |
+          if [ ! -f coverage.out ]; then
+            echo "Arquivo coverage.out não encontrado."
+            exit 0
+          fi
+
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Coverage total: ${COVERAGE}%"
+
+          MIN_COVERAGE=${{ inputs.min_coverage }}
+
+          awk -v coverage="$COVERAGE" -v min="$MIN_COVERAGE" 'BEGIN {
+            if (coverage < min) {
+              printf "Coverage abaixo do mínimo permitido: %.2f%%\n", min
+              exit 1
+            }
+            printf "Coverage aprovado. Mínimo exigido: %.2f%%\n", min
+          }'
+
+      - name: Build da aplicação
+        run: go build -o ${{ inputs.binary_name }} .
+
+  # ==========================================
+  # JOB 2: Criação da Tag (Roda APENAS no merge/fechamento do PR)
+  # ==========================================
+  release-tag:
+    name: Geração de Tag
+    # A condição garante que a tag só será criada no encerramento do PR
+    if: github.event.action == 'closed'
+    # Chama o arquivo global usando caminho relativo (mesma pasta)
+    uses: ./.github/workflows/release-tag.yml
+    with:
+      target_branch: ${{ inputs.target_branch }}
+      source_branch: ${{ inputs.source_branch }}
