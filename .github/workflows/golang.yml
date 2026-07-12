@@ -56,8 +56,8 @@ jobs:
   # ==========================================
   backend-ci:
     name: Backend CI
-    # Impede que os testes rodem à toa quando um PR é apenas fechado/mergeado
-    if: github.event.action != 'closed'
+    # Roda se for um push normal OU se for um PR que ainda está sendo trabalhado
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -134,8 +134,8 @@ jobs:
   # ==========================================
   release-tag:
     name: Geração de Tag
-    # A condição garante que a tag só será criada no encerramento do PR
-    if: github.event.action == 'closed'
+    # BLINDAGEM: Só aciona se o evento for PR + Estiver sendo fechado + Foi aceito (merged)
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true }}
     # Chama o arquivo global usando caminho relativo (mesma pasta)
     uses: ./.github/workflows/release-tag.yml
     with:

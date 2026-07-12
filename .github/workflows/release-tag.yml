@@ -23,10 +23,7 @@ jobs:
     name: Criar tag de release
     runs-on: ubuntu-latest
 
-    if: >
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == inputs.source_branch &&
-      github.event.pull_request.base.ref == inputs.target_branch
+    if: ${{ github.head_ref == inputs.source_branch && github.base_ref == inputs.target_branch }}
 
     steps:
       - name: Checkout do repositório
