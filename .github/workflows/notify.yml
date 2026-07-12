@@ -1,0 +1,27 @@
+name: Global Notification
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        description: 'Status do job anterior (success, failure, cancelled)'
+        required: true
+        type: string
+    secrets:
+      CHAT_WEBHOOK_URL:
+        description: 'Webhook do chat'
+        required: true
+
+jobs:
+  send-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enviar notificação para o Discord
+        uses: sarisia/actions-status-discord@v1
+        if: always()
+        with:
+          webhook: ${{ secrets.CHAT_WEBHOOK_URL }}
+          status: ${{ inputs.status }}
+          title: "Status da Esteira de CI/CD"
+          description: "O pipeline do repositório finalizou a execução."
+          nofail: false
