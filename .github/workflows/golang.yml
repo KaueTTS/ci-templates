@@ -46,6 +46,14 @@ on:
         type: string
         default: 'qa'
 
+    # ==========================================
+    # SECRETS (Necessário para a notificação)
+    # ==========================================
+    secrets:
+      CHAT_WEBHOOK_URL:
+        description: 'Webhook do chat para notificações'
+        required: true
+
 # Permissão global necessária para que o job de release consiga criar a tag
 permissions:
   contents: write
@@ -141,3 +149,20 @@ jobs:
     with:
       target_branch: ${{ inputs.target_branch }}
       source_branch: ${{ inputs.source_branch }}
+
+  # ==========================================
+  # JOB 3: Notificação Global
+  # ==========================================
+  notify:
+    name: Notificar Status
+    # Aguarda o fim dos jobs anteriores para rodar
+    needs: [backend-ci, release-tag] 
+    # Roda sempre, mesmo se os testes (backend-ci) falharem
+    if: always() 
+    # Chama o arquivo na mesma pasta do repositório de templates
+    uses: ./.github/workflows/notify.yml 
+    with:
+      # Mágica aqui: Verifica a matriz de resultados. Se algum falhou, manda 'failure'. Se não, manda 'success' (ou cancelled).
+      status: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
+    secrets:
+      CHAT_WEBHOOK_URL: ${{ secrets.CHAT_WEBHOOK_URL }}
